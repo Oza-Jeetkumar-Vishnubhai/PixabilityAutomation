@@ -2,10 +2,15 @@ import os
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
-from responseReading import channel,video,logo
+from responseReading import read
+from dotenv import load_dotenv 
+import json
 
 # If modifying these scopes, delete the file token.json.
 SCOPES = ['https://www.googleapis.com/auth/drive']
+load_dotenv()
+client_secrets=os.getenv('client_secrets')
+client_secrets=json.loads(client_secrets)
 
 def authenticate():
     creds = None
@@ -16,7 +21,8 @@ def authenticate():
         creds = Credentials.from_authorized_user_file('token.json', SCOPES)
     # If there are no (valid) credentials available, let the user log in.
     if not creds or not creds.valid:
-        flow = InstalledAppFlow.from_client_secrets_file('client_secrets.json', SCOPES)
+        # flow = InstalledAppFlow.from_client_secrets_file('client_secrets.json', SCOPES)
+        flow = InstalledAppFlow.from_client_config(client_secrets, SCOPES)
         creds = flow.run_local_server(port=0)
         # Save the credentials for the next run
         with open('token.json', 'w') as token:
@@ -47,6 +53,10 @@ def downloadFiles():
     removeAllFiles(os.path.join("Excel"))
     removeAllFiles(os.path.join("Images"))
     creds = authenticate()
+    dataList = read()
+    channel = dataList[3]
+    video = dataList[4]
+    logo = dataList[5]
     download_file(channel, 'Excel/channel.xlsx', creds)
     download_file(video, 'Excel/video.xlsx', creds)
     download_file(logo, 'logo.png', creds)

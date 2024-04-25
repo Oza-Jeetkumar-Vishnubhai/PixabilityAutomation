@@ -5,17 +5,14 @@ import pandas as pd
 from pptx.chart.data import ChartData
 import requests
 import wget
-from responseReading import mainBrand,noOfComp
+from responseReading import read
 from downloadFileFromDrive import downloadFiles
 from sendDeck import send
 from dotenv import load_dotenv 
 
 presentation = pptx.Presentation(os.path.join("Pixability", "input.pptx"))
 load_dotenv()
-pptLogo = os.path.join("logo.png")
-downloadFiles()
-excelPathChannel = os.path.join("Excel","channel.xlsx")
-excelPathVideo = os.path.join("Excel","video.xlsx")
+
 os.environ['DB_ADDR'] = 'rethinkdb'
 apiKey = os.getenv('API_KEY')
 print(apiKey)
@@ -101,7 +98,6 @@ def addPptLogo(pptLogo,slideNumber,imgNumber):
 
 def makePivot(excelPathChannel,mainBrand):
     df = pd.read_excel(excelPathChannel,"channel")
-    print(df.head(5))
     df = df.sort_values("Date",ascending=False).reset_index(drop=True)
     lastDate=df["Date"][0]
     pt = pd.pivot_table(df[df["Date"]==lastDate],values = ["SUBSCRIBERS","VIDEO_COUNT","ORGANIC_VIEWS","PAID_VIEWS","TRUEVIEW_SPEND_ESTIMATE"],
@@ -124,7 +120,7 @@ def makePivotVideo(excelPathVideo,mainBrand):
                         )
     return pt
 
-def fetchData5(excelPathChannel,mainBrand,slideNo):
+def fetchData5(excelPathChannel,mainBrand,slideNo,noOfComp):
     newTable = makePivot(excelPathChannel,mainBrand)
     arr = newTable.to_numpy().astype(int)
     slide = presentation.slides[slideNo-1]
@@ -210,7 +206,7 @@ def fetchData10(excelPathChannel,mainBrand,slideNo,sortedBrands):
             chart_data.add_series('Paid Views',newTable['Paid_Per'])
             chart.replace_data(chart_data)
     
-def fetchData11(excelPathVideo,mainBrand,slideNo,sortedBrands):
+def fetchData11(excelPathVideo,mainBrand,slideNo,sortedBrands,noOfComp):
     newTable = makePivotVideo(excelPathVideo,mainBrand)
     newTable.columns=newTable.columns.droplevel(level=0)
     arr = []
@@ -249,20 +245,18 @@ def fetchData11(excelPathVideo,mainBrand,slideNo,sortedBrands):
                     run.text = run.text.replace(run.text,temp)
 
 def getDesc(ids):
-    print(ids)
     url = f'https://www.googleapis.com/youtube/v3/videos?part=snippet&id={ids}&key={apiKey}'
     response = requests.get(url)
     resObj = response.json()
     return resObj["items"][0]['snippet']['title']
 
 def getViews(id):
-    print(id)
     url = f'https://www.googleapis.com/youtube/v3/videos?part=statistics&id={id}&key={apiKey}'
     response = requests.get(url)
     resObj = response.json()
     return resObj["items"][0]['statistics']['viewCount']
 
-def fetchData12(excelPathVideo,mainBrand,slideNo,sortedBrands):
+def fetchData12(excelPathVideo,mainBrand,slideNo,sortedBrands,noOfComp):
     df = pd.read_excel(excelPathVideo,"video")
     pt = pd.pivot_table(df,values = ["VIEWS"],
                         index=["IAB_TIER2","VIDEO_ID"],
@@ -280,7 +274,6 @@ def fetchData12(excelPathVideo,mainBrand,slideNo,sortedBrands):
         tempdf = pt[brand].dropna().loc[subcat].sort_values(ascending=False).reset_index().loc[:1]
         tempdf['_Per']=((tempdf[brand]/subcatGrandTotal)*100).round(2)
         tempdf['_Desc']=[getDesc(tempdf['VIDEO_ID'].iloc[0]),getDesc(tempdf['VIDEO_ID'].iloc[1])]
-        print(tempdf)
         finaldf=pd.concat([finaldf,tempdf],axis=0)
     arr = finaldf.loc[:,['_Per','_Desc']].to_numpy()
     slide = presentation.slides[slideNo-1]
@@ -316,7 +309,7 @@ def fetchData12(excelPathVideo,mainBrand,slideNo,sortedBrands):
                     run = (table.cell(r,c+2)).text_frame.paragraphs[0].runs[0]
                     run.text = run.text.replace(run.text,temp)
 
-def getIds(sortedBrands):
+def getIds(sortedBrands,excelPathVideo,mainBrand):
     df = pd.read_excel(excelPathVideo,"video")
     pt = pd.pivot_table(df,values = ["VIEWS"],
                         index=["VIDEO_ID"],
@@ -338,8 +331,8 @@ def getIds(sortedBrands):
             ids.append(dflist[1])
     return ids
 
-def downloadImage(sortedBrands):
-    idList = getIds(sortedBrands)
+def downloadImage(sortedBrands,excelPathVideo,mainBrand):
+    idList = getIds(sortedBrands,excelPathVideo,mainBrand)
     for ids in idList:
         id=ids[0]
         link = f"https://i.ytimg.com/vi/{id}/maxresdefault.jpg"
@@ -365,10 +358,10 @@ def compact_number(number):
     exp = int((len(str(abs(number))) - 1) / 3)
     return '{:.1f}{}'.format(number / (1000 ** exp), suffixes[exp])
 
-def fetThumbnails(sortedBrands):
+def fetThumbnails(sortedBrands,noOfComp,excelPathVideo,mainBrand):
     slide = presentation.slides[12]
-    downloadImage(sortedBrands)
-    idList = getIds(sortedBrands)
+    downloadImage(sortedBrands,excelPathVideo,mainBrand)
+    idList = getIds(sortedBrands,excelPathVideo,mainBrand)
     cnt=0
     cnt2=0
     for shape in slide.shapes:
@@ -414,7 +407,15 @@ def fetchData89(excelPathChannel,mainBrand,slideNo,sortedBrands,type):
             chart.replace_data(chart_data)
 
 def prepareDeck():
-
+    
+    downloadFiles()
+    pptLogo = os.path.join("logo.png")
+    excelPathChannel = os.path.join("Excel","channel.xlsx")
+    excelPathVideo = os.path.join("Excel","video.xlsx")
+    
+    readData = read()
+    mainBrand = readData[0]
+    noOfComp=readData[1]
     #overall
     changeTextType("Century Gothic")
 
@@ -422,22 +423,33 @@ def prepareDeck():
     addPptLogo(pptLogo,0,1) #location, slide-1, imageNumber-1
 
     #slide5
-    sortedBrands = fetchData5(excelPathChannel,mainBrand,5) #excelPathChannel, mainbrandName, Slide
+    sortedBrands = fetchData5(excelPathChannel,mainBrand,5,noOfComp) #excelPathChannel, mainbrandName, Slide
+    print("slide 5 Done ✅")
     addComa(4,1,noOfComp+1,1,5) #slideNumber-1, rowStart-1, rowEnd-1, colStart-1, colEnd-1
 
     fetchData6(excelPathChannel,mainBrand,6,sortedBrands)
+    print("slide 6 Done ✅")
     fetchData7(excelPathChannel,mainBrand,7,sortedBrands)
+    print("slide 7 Done ✅")
     fetchData89(excelPathChannel,mainBrand,8,sortedBrands,"TRUEVIEW_SPEND_ESTIMATE")
+    print("slide 8 Done ✅")
     fetchData89(excelPathChannel,mainBrand,9,sortedBrands,"VIEWS")
+    print("slide 9 Done ✅")
     fetchData10(excelPathChannel,mainBrand,10,sortedBrands)
-    fetchData11(excelPathVideo,mainBrand,11,sortedBrands)
-    fetchData12(excelPathVideo,mainBrand,12,sortedBrands)
-    fetThumbnails(sortedBrands)
+    print("slide 10 Done ✅")
+    fetchData11(excelPathVideo,mainBrand,11,sortedBrands,noOfComp)
+    print("slide 11 Done ✅")
+    fetchData12(excelPathVideo,mainBrand,12,sortedBrands,noOfComp)
+    print("slide 12 Done ✅")
+    fetThumbnails(sortedBrands,noOfComp,excelPathVideo,mainBrand)
+    print("slide 13 Done ✅")
 
 
 
     # addComa(13,1,10,1,2) #slideNumber-1, rowStart-1, rowEnd-1, colStart-1, colEnd-1
 
     presentation.save(os.path.join("test_pixability.pptx"))
+    print("Successfully saved the deck")
 
     send()
+prepareDeck()

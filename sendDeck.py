@@ -4,15 +4,21 @@ from email import encoders
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from responseReading import email
+from responseReading import read
+from dotenv import load_dotenv 
+import os
 
+load_dotenv()
+password=os.getenv('password')
+sender_email=os.getenv('sender_email')
 
 def send():
+    email = read()[2]
     subject = "An email with attachment from Python"
     body = "Pixability Deck"
     sender_email = "oza.jeetkumar@miqdigital.com"
     receiver_email = email
-    password = "gfls ivkl qdjd mzjq"
+    # password = "gfls ivkl qdjd mzjq"
 
     message = MIMEMultipart()
     message["From"] = sender_email
